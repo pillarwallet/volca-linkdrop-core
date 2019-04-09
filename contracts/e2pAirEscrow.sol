@@ -1,6 +1,9 @@
-import './utilities/SafeMath.sol';
-import './utilities/Stoppable.sol';
-import './token/ERC20/ERC20.sol';
+pragma solidity ^0.4.24;
+
+import "./token/SafeMath.sol";
+import "./util/Stoppable.sol";
+import "./token/ERC20.sol";
+import "./token/StandardToken.sol";
 
 
 /**
@@ -30,11 +33,14 @@ contract e2pAirEscrow is Stoppable {
   address public TOKEN_ADDRESS; // token to distribute
   uint public CLAIM_AMOUNT; // tokens claimed per link
   uint public REFERRAL_AMOUNT; // referral reward
+  uint public REFERRAL_AMOUNT_2;
 
   uint public CLAIM_AMOUNT_ETH; // ether claimed per link
   address public AIRDROPPER; // airdropper address, which has tokens to distribute
   address public AIRDROP_TRANSIT_ADDRESS; // special address, used on claim to verify
   // that links signed by the airdropper
+
+  mapping (address => uint) referrals;
 
 
   event LogWithdraw(
@@ -56,13 +62,15 @@ contract e2pAirEscrow is Stoppable {
    */
   constructor(address _tokenAddress,
 	      uint _claimAmount,
-	      uint  _referralAmount,
+	      uint _referralAmount,
+        uint _referralAmount2,
 	      uint _claimAmountEth,
 	      address _airdropTransitAddress) public payable {
     AIRDROPPER = msg.sender;
     TOKEN_ADDRESS = _tokenAddress;
     CLAIM_AMOUNT = _claimAmount;
     REFERRAL_AMOUNT = _referralAmount;
+    REFERRAL_AMOUNT_2 = _referralAmount2;
     CLAIM_AMOUNT_ETH = _claimAmountEth;
     AIRDROP_TRANSIT_ADDRESS = _airdropTransitAddress;
   }
@@ -199,8 +207,23 @@ contract e2pAirEscrow is Stoppable {
     }
 
     // send tokens to the address who refferred the airdrop
-    if (REFERRAL_AMOUNT > 0 && _referralAddress != 0x0000000000000000000000000000000000000000) {
-      token.transferFrom(AIRDROPPER, _referralAddress, REFERRAL_AMOUNT);
+    if (REFERRAL_AMOUNT > 0 && _referralAddress != 0x0000000000000000000000000000000000000000 && TOKEN_ADDRESS != 0x0000000000000000000000000000000000000000) {
+      StandardToken token2 = StandardToken(TOKEN_ADDRESS);
+      //pillar customization for referrals
+      referrals[_referralAddress] = referrals[_referralAddress] + 1;
+
+      if(referrals[_referralAddress] <= 10) {
+        token2.transferFrom(AIRDROPPER, _referralAddress, REFERRAL_AMOUNT);
+      } else if(referrals[_referralAddress] == 11) {
+        //transfer the bronze badge
+      } else if(referrals[_referralAddress] >= 20) {
+        token2.transferFrom(AIRDROPPER, _referralAddress, REFERRAL_AMOUNT_2);
+        if(referrals[_referralAddress] == 50) {
+          //transfer silver badge
+        } else if(referrals[_referralAddress] == 100) {
+          //transfer golden badge
+        }
+      }
     }
 
 

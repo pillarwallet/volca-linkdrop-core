@@ -1,0 +1,1310 @@
+pragma solidity ^0.4.24;
+
+
+
+
+contract ERC721X {
+  function implementsERC721X() public pure returns (bool);
+  function ownerOf(uint256 _tokenId) public view returns (address _owner);
+  function balanceOf(address owner) public view returns (uint256);
+  function balanceOf(address owner, uint256 tokenId) public view returns (uint256);
+  function tokensOwned(address owner) public view returns (uint256[], uint256[]);
+
+  function transfer(address to, uint256 tokenId, uint256 quantity) public;
+  function transferFrom(address from, address to, uint256 tokenId, uint256 quantity) public;
+
+  // Fungible Safe Transfer From
+  function safeTransferFrom(address from, address to, uint256 tokenId, uint256 _amount) public;
+  function safeTransferFrom(address from, address to, uint256 tokenId, uint256 _amount, bytes data) public;
+
+  // Batch Safe Transfer From
+  function safeBatchTransferFrom(address _from, address _to, uint256[] tokenIds, uint256[] _amounts, bytes _data) public;
+
+  function name() external view returns (string);
+  function symbol() external view returns (string);
+
+  // Required Events
+  event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+  event TransferWithQuantity(address indexed from, address indexed to, uint256 indexed tokenId, uint256 quantity);
+  event ApprovalForAll(address indexed _owner, address indexed _operator, bool _approved);
+  event BatchTransfer(address indexed from, address indexed to, uint256[] tokenTypes, uint256[] amounts);
+}
+
+
+
+
+/**
+ * @title ERC721X token receiver interface
+ * @dev Interface for any contract that wants to support safeTransfers
+ *  from ERC721X contracts.
+ */
+contract ERC721XReceiver {
+  /**
+    * @dev Magic value to be returned upon successful reception of an amount of ERC721X tokens
+    *  Equals to `bytes4(keccak256("onERC721XReceived(address,uint256,bytes)"))`,
+    *  which can be also obtained as `ERC721XReceiver(0).onERC721XReceived.selector`
+    */
+  bytes4 constant ERC721X_RECEIVED = 0x660b3370;
+  bytes4 constant ERC721X_BATCH_RECEIVE_SIG = 0xe9e5be6a;
+
+  function onERC721XReceived(address _operator, address _from, uint256 tokenId, uint256 amount, bytes data) public returns(bytes4);
+
+  /**
+   * @dev Handle the receipt of multiple fungible tokens from an MFT contract. The ERC721X smart contract calls
+   * this function on the recipient after a `batchTransfer`. This function MAY throw to revert and reject the
+   * transfer. Return of other than the magic value MUST result in the transaction being reverted.
+   * Returns `bytes4(keccak256("onERC721XBatchReceived(address,address,uint256[],uint256[],bytes)"))` unless throwing.
+   * @notice The contract address is always the message sender. A wallet/broker/auction application
+   * MUST implement the wallet interface if it will accept safe transfers.
+   * @param _operator The address which called `safeTransferFrom` function.
+   * @param _from The address from which the token was transfered from.
+   * @param _types Array of types of token being transferred (where each type is represented as an ID)
+   * @param _amounts Array of amount of object per type to be transferred.
+   * @param _data Additional data with no specified format.
+   */
+  function onERC721XBatchReceived(
+          address _operator,
+          address _from,
+          uint256[] _types,
+          uint256[] _amounts,
+          bytes _data
+          )
+      public
+      returns(bytes4);
+}
+
+
+
+
+
+/**
+ * @title ERC165
+ * @dev https://github.com/ethereum/EIPs/blob/master/EIPS/eip-165.md
+ */
+interface ERC165 {
+
+  /**
+   * @notice Query if a contract implements an interface
+   * @param _interfaceId The interface identifier, as specified in ERC-165
+   * @dev Interface identification is specified in ERC-165. This function
+   * uses less than 30,000 gas.
+   */
+  function supportsInterface(bytes4 _interfaceId)
+    external
+    view
+    returns (bool);
+}
+
+
+
+/**
+ * @title SupportsInterfaceWithLookup
+ * @author Matt Condon (@shrugs)
+ * @dev Implements ERC165 using a lookup table.
+ */
+contract SupportsInterfaceWithLookup is ERC165 {
+
+  bytes4 public constant InterfaceId_ERC165 = 0x01ffc9a7;
+  /**
+   * 0x01ffc9a7 ===
+   *   bytes4(keccak256('supportsInterface(bytes4)'))
+   */
+
+  /**
+   * @dev a mapping of interface id to whether or not it's supported
+   */
+  mapping(bytes4 => bool) internal supportedInterfaces;
+
+  /**
+   * @dev A contract implementing SupportsInterfaceWithLookup
+   * implement ERC165 itself
+   */
+  constructor()
+    public
+  {
+    _registerInterface(InterfaceId_ERC165);
+  }
+
+  /**
+   * @dev implement supportsInterface(bytes4) using a lookup table
+   */
+  function supportsInterface(bytes4 _interfaceId)
+    external
+    view
+    returns (bool)
+  {
+    return supportedInterfaces[_interfaceId];
+  }
+
+  /**
+   * @dev private method for registering an interface
+   */
+  function _registerInterface(bytes4 _interfaceId)
+    internal
+  {
+    require(_interfaceId != 0xffffffff);
+    supportedInterfaces[_interfaceId] = true;
+  }
+}
+
+
+
+
+
+/**
+ * @title ERC721 Non-Fungible Token Standard basic interface
+ * @dev see https://github.com/ethereum/EIPs/blob/master/EIPS/eip-721.md
+ */
+contract ERC721Basic is ERC165 {
+
+  bytes4 internal constant InterfaceId_ERC721 = 0x80ac58cd;
+  /*
+   * 0x80ac58cd ===
+   *   bytes4(keccak256('balanceOf(address)')) ^
+   *   bytes4(keccak256('ownerOf(uint256)')) ^
+   *   bytes4(keccak256('approve(address,uint256)')) ^
+   *   bytes4(keccak256('getApproved(uint256)')) ^
+   *   bytes4(keccak256('setApprovalForAll(address,bool)')) ^
+   *   bytes4(keccak256('isApprovedForAll(address,address)')) ^
+   *   bytes4(keccak256('transferFrom(address,address,uint256)')) ^
+   *   bytes4(keccak256('safeTransferFrom(address,address,uint256)')) ^
+   *   bytes4(keccak256('safeTransferFrom(address,address,uint256,bytes)'))
+   */
+
+  bytes4 internal constant InterfaceId_ERC721Exists = 0x4f558e79;
+  /*
+   * 0x4f558e79 ===
+   *   bytes4(keccak256('exists(uint256)'))
+   */
+
+  bytes4 internal constant InterfaceId_ERC721Enumerable = 0x780e9d63;
+  /**
+   * 0x780e9d63 ===
+   *   bytes4(keccak256('totalSupply()')) ^
+   *   bytes4(keccak256('tokenOfOwnerByIndex(address,uint256)')) ^
+   *   bytes4(keccak256('tokenByIndex(uint256)'))
+   */
+
+  bytes4 internal constant InterfaceId_ERC721Metadata = 0x5b5e139f;
+  /**
+   * 0x5b5e139f ===
+   *   bytes4(keccak256('name()')) ^
+   *   bytes4(keccak256('symbol()')) ^
+   *   bytes4(keccak256('tokenURI(uint256)'))
+   */
+
+  event Transfer(
+    address indexed _from,
+    address indexed _to,
+    uint256 indexed _tokenId
+  );
+  event Approval(
+    address indexed _owner,
+    address indexed _approved,
+    uint256 indexed _tokenId
+  );
+  event ApprovalForAll(
+    address indexed _owner,
+    address indexed _operator,
+    bool _approved
+  );
+
+  function balanceOf(address _owner) public view returns (uint256 _balance);
+  function ownerOf(uint256 _tokenId) public view returns (address _owner);
+  function exists(uint256 _tokenId) public view returns (bool _exists);
+
+  function approve(address _to, uint256 _tokenId) public;
+  function getApproved(uint256 _tokenId)
+    public view returns (address _operator);
+
+  function setApprovalForAll(address _operator, bool _approved) public;
+  function isApprovedForAll(address _owner, address _operator)
+    public view returns (bool);
+
+  function transferFrom(address _from, address _to, uint256 _tokenId) public;
+  function safeTransferFrom(address _from, address _to, uint256 _tokenId)
+    public;
+
+  function safeTransferFrom(
+    address _from,
+    address _to,
+    uint256 _tokenId,
+    bytes _data
+  )
+    public;
+}
+
+
+
+/**
+ * @title ERC-721 Non-Fungible Token Standard, optional enumeration extension
+ * @dev See https://github.com/ethereum/EIPs/blob/master/EIPS/eip-721.md
+ */
+contract ERC721Enumerable is ERC721Basic {
+  function totalSupply() public view returns (uint256);
+  function tokenOfOwnerByIndex(
+    address _owner,
+    uint256 _index
+  )
+    public
+    view
+    returns (uint256 _tokenId);
+
+  function tokenByIndex(uint256 _index) public view returns (uint256);
+}
+
+
+/**
+ * @title ERC-721 Non-Fungible Token Standard, optional metadata extension
+ * @dev See https://github.com/ethereum/EIPs/blob/master/EIPS/eip-721.md
+ */
+contract ERC721Metadata is ERC721Basic {
+  function name() external view returns (string _name);
+  function symbol() external view returns (string _symbol);
+  function tokenURI(uint256 _tokenId) public view returns (string);
+}
+
+
+/**
+ * @title ERC-721 Non-Fungible Token Standard, full implementation interface
+ * @dev See https://github.com/ethereum/EIPs/blob/master/EIPS/eip-721.md
+ */
+contract ERC721 is ERC721Basic, ERC721Enumerable, ERC721Metadata {
+}
+
+
+
+/**
+ * @title ERC721 token receiver interface
+ * @dev Interface for any contract that wants to support safeTransfers
+ * from ERC721 asset contracts.
+ */
+contract ERC721Receiver {
+  /**
+   * @dev Magic value to be returned upon successful reception of an NFT
+   *  Equals to `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`,
+   *  which can be also obtained as `ERC721Receiver(0).onERC721Received.selector`
+   */
+  bytes4 internal constant ERC721_RECEIVED = 0x150b7a02;
+
+  /**
+   * @notice Handle the receipt of an NFT
+   * @dev The ERC721 smart contract calls this function on the recipient
+   * after a `safetransfer`. This function MAY throw to revert and reject the
+   * transfer. Return of other than the magic value MUST result in the
+   * transaction being reverted.
+   * Note: the contract address is always the message sender.
+   * @param _operator The address which called `safeTransferFrom` function
+   * @param _from The address which previously owned the token
+   * @param _tokenId The NFT identifier which is being transferred
+   * @param _data Additional data with no specified format
+   * @return `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`
+   */
+  function onERC721Received(
+    address _operator,
+    address _from,
+    uint256 _tokenId,
+    bytes _data
+  )
+    public
+    returns(bytes4);
+}
+
+
+
+
+// Packed NFT that has storage which is batch transfer compatible
+contract ERC721XTokenNFT is ERC721, SupportsInterfaceWithLookup {
+
+    using ObjectLib for ObjectLib.Operations;
+    using ObjectLib for uint256;
+    using AddressUtils for address;
+
+    // bytes4 internal constant InterfaceId_ERC721Enumerable = 0x780e9d63;
+    bytes4 internal constant ERC721_RECEIVED = 0x150b7a02;
+    bytes4 internal constant InterfaceId_ERC721Metadata = 0x5b5e139f;
+
+    uint256[] internal allTokens;
+    mapping(address => mapping(uint256 => uint256)) packedTokenBalance;
+    mapping(uint256 => address) internal tokenOwner;
+    mapping(address => mapping(address => bool)) operators;
+    mapping (uint256 => address) internal tokenApprovals;
+    mapping(uint256 => uint256) tokenType;
+
+    uint256 constant NFT = 1;
+    uint256 constant FT = 2;
+
+
+    constructor() public {
+        // _registerInterface(InterfaceId_ERC721Enumerable);
+        _registerInterface(InterfaceId_ERC721Metadata);
+    }
+
+    function name() external view returns (string) {
+        return "ERC721XTokenNFT";
+    }
+
+    function symbol() external view returns (string) {
+        return "ERC721X";
+    }
+
+    /**
+     * @dev Returns whether the specified token exists
+     * @param _tokenId uint256 ID of the token to query the existence of
+     * @return whether the token exists
+     */
+    function exists(uint256 _tokenId) public view returns (bool) {
+        return tokenType[_tokenId] != 0;
+    }
+
+    function implementsERC721() public pure returns (bool) {
+        return true;
+    }
+
+    /**
+     * @dev Gets the total amount of tokens stored by the contract
+     * @return uint256 representing the total amount of tokens
+     */
+    function totalSupply() public view returns (uint256) {
+        return allTokens.length;
+    }
+
+    /**
+     * @dev Gets the token ID at a given index of all the tokens in this contract
+     * Reverts if the index is greater or equal to the total number of tokens
+     * @param _index uint256 representing the index to be accessed of the tokens list
+     * @return uint256 token ID at the given index of the tokens list
+     */
+    function tokenByIndex(uint256 _index) public view returns (uint256) {
+        require(_index < totalSupply());
+        return allTokens[_index];
+    }
+
+    /**
+     * @dev Gets the owner of a given NFT
+     * @param _tokenId uint256 representing the unique token identifier
+     * @return address the owner of the token
+     */
+    function ownerOf(uint256 _tokenId) public view returns (address) {
+        require(tokenOwner[_tokenId] != address(0), "Coin does not exist");
+        return tokenOwner[_tokenId];
+    }
+
+    /**
+     * @dev Gets Iterate through the list of existing tokens and return the indexes
+     *        and balances of the tokens owner by the user
+     * @param _owner The adddress we are checking
+     * @return indexes The tokenIds
+     * @return balances The balances of each token
+     */
+    function tokensOwned(address _owner) public view returns (uint256[] indexes, uint256[] balances) {
+        uint256 numTokens = totalSupply();
+        uint256[] memory tokenIndexes = new uint256[](numTokens);
+        uint256[] memory tempTokens = new uint256[](numTokens);
+
+        uint256 count;
+        for (uint256 i = 0; i < numTokens; i++) {
+            uint256 tokenId = allTokens[i];
+            if (balanceOf(_owner, tokenId) > 0) {
+                tempTokens[count] = balanceOf(_owner, tokenId);
+                tokenIndexes[count] = tokenId;
+                count++;
+            }
+        }
+
+        // copy over the data to a correct size array
+        uint256[] memory _ownedTokens = new uint256[](count);
+        uint256[] memory _ownedTokensIndexes = new uint256[](count);
+
+        for (i = 0; i < count; i++) {
+            _ownedTokens[i] = tempTokens[i];
+            _ownedTokensIndexes[i] = tokenIndexes[i];
+        }
+
+        return (_ownedTokensIndexes, _ownedTokens);
+    }
+
+    /**
+     *  @dev Gets the number of tokens owned by the address we are checking
+     *  @param _owner The adddress we are checking
+     *  @return balance The unique amount of tokens owned
+     */
+    function balanceOf(address _owner) public view returns (uint256 balance) {
+        (,uint256[] memory tokens) = tokensOwned(_owner);
+        return tokens.length;
+    }
+
+    /**
+     * @dev return the _tokenId type' balance of _address
+     * @param _address Address to query balance of
+     * @param _tokenId type to query balance of
+     * @return Amount of objects of a given type ID
+     */
+    function balanceOf(address _address, uint256 _tokenId) public view returns (uint256) {
+        (uint256 bin, uint256 index) = _tokenId.getTokenBinIndex();
+        return packedTokenBalance[_address][bin].getValueInBin(index);
+    }
+
+    function safeTransferFrom(
+        address _from,
+        address _to,
+        uint256 _tokenId
+    )
+        public
+    {
+        safeTransferFrom(_from, _to, _tokenId, "");
+    }
+
+    function safeTransferFrom(
+        address _from,
+        address _to,
+        uint256 _tokenId,
+        bytes _data
+    )
+        public
+    {
+        _transferFrom(_from, _to, _tokenId);
+        require(
+            checkAndCallSafeTransfer(_from, _to, _tokenId, _data),
+            "Sent to a contract which is not an ERC721 receiver"
+        );
+    }
+
+    function transferFrom(address _from, address _to, uint256 _tokenId) public {
+        _transferFrom(_from, _to, _tokenId);
+    }
+
+    function _transferFrom(address _from, address _to, uint256 _tokenId)
+        internal
+    {
+        require(tokenType[_tokenId] == NFT);
+        require(isApprovedOrOwner(_from, ownerOf(_tokenId), _tokenId));
+        require(_to != address(0), "Invalid to address");
+
+        _updateTokenBalance(_from, _tokenId, 0, ObjectLib.Operations.REPLACE);
+        _updateTokenBalance(_to, _tokenId, 1, ObjectLib.Operations.REPLACE);
+
+        tokenOwner[_tokenId] = _to;
+        emit Transfer(_from, _to, _tokenId);
+    }
+
+    function tokenURI(uint256 _tokenId) public view returns (string tokenUri) {
+        require(exists(_tokenId), "Token doesn't exist");
+        tokenUri = "https://rinkeby.loom.games/erc721/zmb/000000.json";
+
+        bytes memory _uriBytes = bytes(tokenUri);
+        _uriBytes[38] = byte(48+(_tokenId / 100000) % 10);
+        _uriBytes[39] = byte(48+(_tokenId / 10000) % 10);
+        _uriBytes[40] = byte(48+(_tokenId / 1000) % 10);
+        _uriBytes[41] = byte(48+(_tokenId / 100) % 10);
+        _uriBytes[42] = byte(48+(_tokenId / 10) % 10);
+        _uriBytes[43] = byte(48+(_tokenId / 1) % 10);
+
+        return tokenUri;
+    }
+
+    /**
+     * @dev Internal function to invoke `onERC721Received` on a target address
+     * The call is not executed if the target address is not a contract
+     * @param _from address representing the previous owner of the given token ID
+     * @param _to target address that will receive the tokens
+     * @param _tokenId uint256 ID of the token to be transferred
+     * @param _data bytes optional data to send along with the call
+     * @return whether the call correctly returned the expected magic value
+     */
+    function checkAndCallSafeTransfer(
+        address _from,
+        address _to,
+        uint256 _tokenId,
+        bytes _data
+    )
+        internal
+        returns (bool)
+    {
+        if (!_to.isContract()) {
+            return true;
+        }
+        bytes4 retval = ERC721Receiver(_to).onERC721Received(
+            msg.sender, _from, _tokenId, _data
+        );
+        return (retval == ERC721_RECEIVED);
+    }
+
+    /**
+     * @dev Will set _operator operator status to true or false
+     * @param _operator Address to changes operator status.
+     * @param _approved  _operator's new operator status (true or false)
+     */
+    function setApprovalForAll(address _operator, bool _approved) public {
+        // Update operator status
+        operators[msg.sender][_operator] = _approved;
+        emit ApprovalForAll(msg.sender, _operator, _approved);
+    }
+
+    /**
+     * @dev Approves another address to transfer the given token ID
+     * The zero address indicates there is no approved address.
+     * There can only be one approved address per token at a given time.
+     * Can only be called by the token owner or an approved operator.
+     * @param _to address to be approved for the given token ID
+     * @param _tokenId uint256 ID of the token to be approved
+     */
+    function approve(address _to, uint256 _tokenId) public {
+        address owner = ownerOf(_tokenId);
+        require(_to != owner);
+        require(msg.sender == owner || isApprovedForAll(owner, msg.sender));
+
+        tokenApprovals[_tokenId] = _to;
+        emit Approval(owner, _to, _tokenId);
+    }
+
+    function _mint(uint256 _tokenId, address _to) internal {
+        require(!exists(_tokenId), "Error: Tried to mint duplicate token id");
+        _updateTokenBalance(_to, _tokenId, 1, ObjectLib.Operations.REPLACE);
+        tokenOwner[_tokenId] = _to;
+        tokenType[_tokenId] = NFT;
+        allTokens.push(_tokenId);
+        emit Transfer(address(this), _to, _tokenId);
+    }
+
+    function _updateTokenBalance(
+        address _from,
+        uint256 _tokenId,
+        uint256 _amount,
+        ObjectLib.Operations op
+    )
+        internal
+    {
+        (uint256 bin, uint256 index) = _tokenId.getTokenBinIndex();
+        packedTokenBalance[_from][bin] =
+            packedTokenBalance[_from][bin].updateTokenBalance(
+                index, _amount, op
+        );
+    }
+
+
+    /**
+     * @dev Gets the approved address for a token ID, or zero if no address set
+     * @param _tokenId uint256 ID of the token to query the approval of
+     * @return address currently approved for the given token ID
+     */
+    function getApproved(uint256 _tokenId) public view returns (address) {
+        return tokenApprovals[_tokenId];
+    }
+
+    /**
+     * @dev Function that verifies whether _operator is an authorized operator of _tokenHolder.
+     * @param _operator The address of the operator to query status of
+     * @param _owner Address of the tokenHolder
+     * @return A uint256 specifying the amount of tokens still available for the spender.
+     */
+    function isApprovedForAll(address _owner, address _operator) public view returns (bool isOperator) {
+        return operators[_owner][_operator];
+    }
+
+    function isApprovedOrOwner(address _spender, address _owner, uint256 _tokenId)
+        internal
+        view
+        returns (bool)
+    {
+        return (
+            _spender == _owner ||
+            getApproved(_tokenId) == _spender ||
+            isApprovedForAll(_owner, _spender)
+        );
+    }
+
+    // FOR COMPATIBILITY WITH ERC721 Standard, UNUSED.
+    function tokenOfOwnerByIndex(address _owner, uint256 _index) public view returns (uint256 _tokenId) {_owner; _index; return 0;}
+}
+
+
+
+
+/**
+ * Utility library of inline functions on addresses
+ */
+library AddressUtils {
+
+  /**
+   * Returns whether the target address is a contract
+   * @dev This function will return false if invoked during the constructor of a contract,
+   * as the code is not actually created until after the constructor finishes.
+   * @param _addr address to check
+   * @return whether the target address is a contract
+   */
+  function isContract(address _addr) internal view returns (bool) {
+    uint256 size;
+    // XXX Currently there is no better way to check if there is a contract in an address
+    // than to check the size of the code at that address.
+    // See https://ethereum.stackexchange.com/a/14016/36603
+    // for more details about how this works.
+    // TODO Check this again before the Serenity release, because all addresses will be
+    // contracts then.
+    // solium-disable-next-line security/no-inline-assembly
+    assembly { size := extcodesize(_addr) }
+    return size > 0;
+  }
+
+}
+
+
+
+// Additional features over NFT token that is compatible with batch transfers
+contract ERC721XToken is ERC721X, ERC721XTokenNFT {
+
+    using ObjectLib for ObjectLib.Operations;
+    using AddressUtils for address;
+
+    bytes4 internal constant ERC721X_RECEIVED = 0x660b3370;
+    bytes4 internal constant ERC721X_BATCH_RECEIVE_SIG = 0xe9e5be6a;
+
+    event BatchTransfer(address from, address to, uint256[] tokenTypes, uint256[] amounts);
+
+
+    modifier isOperatorOrOwner(address _from) {
+        require((msg.sender == _from) || operators[_from][msg.sender], "msg.sender is neither _from nor operator");
+        _;
+    }
+
+    function implementsERC721X() public pure returns (bool) {
+        return true;
+    }
+
+    /**
+     * @dev transfer objects from different tokenIds to specified address
+     * @param _from The address to BatchTransfer objects from.
+     * @param _to The address to batchTransfer objects to.
+     * @param _tokenIds Array of tokenIds to update balance of
+     * @param _amounts Array of amount of object per type to be transferred.
+     * Note:  Arrays should be sorted so that all tokenIds in a same bin are adjacent (more efficient).
+     */
+    function _batchTransferFrom(address _from, address _to, uint256[] _tokenIds, uint256[] _amounts)
+        internal
+        isOperatorOrOwner(_from)
+    {
+
+        // Requirements
+        require(_tokenIds.length == _amounts.length, "Inconsistent array length between args");
+        require(_to != address(0), "Invalid recipient");
+
+        if (tokenType[_tokenIds[0]] == NFT) {
+            tokenOwner[_tokenIds[0]] = _to;
+            emit Transfer(_from, _to, _tokenIds[0]);
+        }
+
+        // Load first bin and index where the object balance exists
+        (uint256 bin, uint256 index) = ObjectLib.getTokenBinIndex(_tokenIds[0]);
+
+        // Balance for current bin in memory (initialized with first transfer)
+        // Written with bad library syntax instead of as below to bypass stack limit error
+        uint256 balFrom = ObjectLib.updateTokenBalance(
+            packedTokenBalance[_from][bin], index, _amounts[0], ObjectLib.Operations.SUB
+        );
+        uint256 balTo = ObjectLib.updateTokenBalance(
+            packedTokenBalance[_to][bin], index, _amounts[0], ObjectLib.Operations.ADD
+        );
+
+        // Number of transfers to execute
+        uint256 nTransfer = _tokenIds.length;
+
+        // Last bin updated
+        uint256 lastBin = bin;
+
+        for (uint256 i = 1; i < nTransfer; i++) {
+            // If we're transferring an NFT we additionally should update the tokenOwner and emit the corresponding event
+            if (tokenType[_tokenIds[i]] == NFT) {
+                tokenOwner[_tokenIds[i]] = _to;
+                emit Transfer(_from, _to, _tokenIds[i]);
+            }
+            (bin, index) = _tokenIds[i].getTokenBinIndex();
+
+            // If new bin
+            if (bin != lastBin) {
+                // Update storage balance of previous bin
+                packedTokenBalance[_from][lastBin] = balFrom;
+                packedTokenBalance[_to][lastBin] = balTo;
+
+                // Load current bin balance in memory
+                balFrom = packedTokenBalance[_from][bin];
+                balTo = packedTokenBalance[_to][bin];
+
+                // Bin will be the most recent bin
+                lastBin = bin;
+            }
+
+            // Update memory balance
+            balFrom = balFrom.updateTokenBalance(index, _amounts[i], ObjectLib.Operations.SUB);
+            balTo = balTo.updateTokenBalance(index, _amounts[i], ObjectLib.Operations.ADD);
+        }
+
+        // Update storage of the last bin visited
+        packedTokenBalance[_from][bin] = balFrom;
+        packedTokenBalance[_to][bin] = balTo;
+
+        // Emit batchTransfer event
+        emit BatchTransfer(_from, _to, _tokenIds, _amounts);
+    }
+
+    function batchTransferFrom(address _from, address _to, uint256[] _tokenIds, uint256[] _amounts) public {
+        // Batch Transfering
+        _batchTransferFrom(_from, _to, _tokenIds, _amounts);
+    }
+
+    /**
+     * @dev transfer objects from different tokenIds to specified address
+     * @param _from The address to BatchTransfer objects from.
+     * @param _to The address to batchTransfer objects to.
+     * @param _tokenIds Array of tokenIds to update balance of
+     * @param _amounts Array of amount of object per type to be transferred.
+     * @param _data Data to pass to onERC721XReceived() function if recipient is contract
+     * Note:  Arrays should be sorted so that all tokenIds in a same bin are adjacent (more efficient).
+     */
+    function safeBatchTransferFrom(
+        address _from,
+        address _to,
+        uint256[] _tokenIds,
+        uint256[] _amounts,
+        bytes _data
+    )
+        public
+    {
+
+        // Batch Transfering
+        _batchTransferFrom(_from, _to, _tokenIds, _amounts);
+
+        // Pass data if recipient is contract
+        if (_to.isContract()) {
+            bytes4 retval = ERC721XReceiver(_to).onERC721XBatchReceived(
+                msg.sender, _from, _tokenIds, _amounts, _data
+            );
+            require(retval == ERC721X_BATCH_RECEIVE_SIG);
+        }
+    }
+
+    function transfer(address _to, uint256 _tokenId, uint256 _amount) public {
+        _transferFrom(msg.sender, _to, _tokenId, _amount);
+    }
+
+    function transferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount) public {
+        _transferFrom(_from, _to, _tokenId, _amount);
+    }
+
+    function _transferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount)
+        internal
+        isOperatorOrOwner(_from)
+    {
+        require(tokenType[_tokenId] == FT);
+        require(_amount <= balanceOf(_from, _tokenId), "Quantity greater than from balance");
+        require(_to != address(0), "Invalid to address");
+
+        _updateTokenBalance(_from, _tokenId, _amount, ObjectLib.Operations.SUB);
+        _updateTokenBalance(_to, _tokenId, _amount, ObjectLib.Operations.ADD);
+        emit TransferWithQuantity(_from, _to, _tokenId, _amount);
+    }
+
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount) public {
+        safeTransferFrom(_from, _to, _tokenId, _amount, "");
+    }
+
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount, bytes _data) public {
+        _transferFrom(_from, _to, _tokenId, _amount);
+        require(
+            checkAndCallSafeTransfer(_from, _to, _tokenId, _amount, _data),
+            "Sent to a contract which is not an ERC721X receiver"
+        );
+    }
+
+    function _mint(uint256 _tokenId, address _to, uint256 _supply) internal {
+        // If the token doesn't exist, add it to the tokens array
+        if (!exists(_tokenId)) {
+            tokenType[_tokenId] = FT;
+            allTokens.push(_tokenId);
+        } else {
+            // if the token exists, it must be a FT
+            require(tokenType[_tokenId] == FT, "Not a FT");
+        }
+
+        _updateTokenBalance(_to, _tokenId, _supply, ObjectLib.Operations.ADD);
+        emit TransferWithQuantity(address(this), _to, _tokenId, _supply);
+    }
+
+
+    function checkAndCallSafeTransfer(
+        address _from,
+        address _to,
+        uint256 _tokenId,
+        uint256 _amount,
+        bytes _data
+    )
+        internal
+        returns (bool)
+    {
+        if (!_to.isContract()) {
+            return true;
+        }
+
+        bytes4 retval = ERC721XReceiver(_to).onERC721XReceived(
+            msg.sender, _from, _tokenId, _amount, _data);
+        return(retval == ERC721X_RECEIVED);
+    }
+
+}
+
+
+
+
+/**
+ * @title SafeMath
+ * @dev Math operations with safety checks that throw on error
+ */
+library SafeMath {
+
+  /**
+  * @dev Multiplies two numbers, throws on overflow.
+  */
+  function mul(uint256 _a, uint256 _b) internal pure returns (uint256 c) {
+    // Gas optimization: this is cheaper than asserting 'a' not being zero, but the
+    // benefit is lost if 'b' is also tested.
+    // See: https://github.com/OpenZeppelin/openzeppelin-solidity/pull/522
+    if (_a == 0) {
+      return 0;
+    }
+
+    c = _a * _b;
+    assert(c / _a == _b);
+    return c;
+  }
+
+  /**
+  * @dev Integer division of two numbers, truncating the quotient.
+  */
+  function div(uint256 _a, uint256 _b) internal pure returns (uint256) {
+    // assert(_b > 0); // Solidity automatically throws when dividing by 0
+    // uint256 c = _a / _b;
+    // assert(_a == _b * c + _a % _b); // There is no case in which this doesn't hold
+    return _a / _b;
+  }
+
+  /**
+  * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
+  */
+  function sub(uint256 _a, uint256 _b) internal pure returns (uint256) {
+    assert(_b <= _a);
+    return _a - _b;
+  }
+
+  /**
+  * @dev Adds two numbers, throws on overflow.
+  */
+  function add(uint256 _a, uint256 _b) internal pure returns (uint256 c) {
+    c = _a + _b;
+    assert(c >= _a);
+    return c;
+  }
+}
+
+
+
+library ObjectLib {
+
+  using SafeMath for uint256;
+  enum Operations { ADD, SUB, REPLACE }
+  // Constants regarding bin or chunk sizes for balance packing
+  uint256 constant TYPES_BITS_SIZE   = 16;                     // Max size of each object
+  uint256 constant TYPES_PER_UINT256 = 256 / TYPES_BITS_SIZE; // Number of types per uint256
+
+
+  //
+  // Objects and Tokens Functions
+  //
+
+  /**
+  * @dev Return the bin number and index within that bin where ID is
+  * @param _tokenId Object type
+  * @return (Bin number, ID's index within that bin)
+  */
+  function getTokenBinIndex(uint256 _tokenId) internal pure returns (uint256 bin, uint256 index) {
+     bin = _tokenId * TYPES_BITS_SIZE / 256;
+     index = _tokenId % TYPES_PER_UINT256;
+     return (bin, index);
+  }
+
+
+  /**
+  * @dev update the balance of a type provided in _binBalances
+  * @param _binBalances Uint256 containing the balances of objects
+  * @param _index Index of the object in the provided bin
+  * @param _amount Value to update the type balance
+  * @param _operation Which operation to conduct :
+  *     Operations.REPLACE : Replace type balance with _amount
+  *     Operations.ADD     : ADD _amount to type balance
+  *     Operations.SUB     : Substract _amount from type balance
+  */
+  function updateTokenBalance(
+    uint256 _binBalances,
+    uint256 _index,
+    uint256 _amount,
+    Operations _operation) internal pure returns (uint256 newBinBalance)
+  {
+    if (_operation == Operations.ADD) {
+
+        uint256 objectBalance = getValueInBin(_binBalances, _index);
+        newBinBalance = writeValueInBin(_binBalances, _index, objectBalance.add(_amount));
+
+    } else if (_operation == Operations.SUB) {
+
+        objectBalance = getValueInBin(_binBalances, _index);
+        newBinBalance = writeValueInBin(_binBalances, _index, objectBalance.sub(_amount));
+
+    } else if (_operation == Operations.REPLACE) {
+
+        newBinBalance = writeValueInBin(_binBalances, _index, _amount);
+
+    } else {
+      revert("Invalid operation"); // Bad operation
+    }
+
+    return newBinBalance;
+  }
+  /*
+  * @dev return value in _binValue at position _index
+  * @param _binValue uint256 containing the balances of TYPES_PER_UINT256 types
+  * @param _index index at which to retrieve value
+  * @return Value at given _index in _bin
+  */
+  function getValueInBin(uint256 _binValue, uint256 _index) internal pure returns (uint256) {
+
+    // Mask to retrieve data for a given binData
+    uint256 mask = (uint256(1) << TYPES_BITS_SIZE) - 1;
+
+    // Shift amount
+    uint256 rightShift = 256 - TYPES_BITS_SIZE * (_index + 1);
+    return (_binValue >> rightShift) & mask;
+  }
+
+  /**
+  * @dev return the updated _binValue after writing _amount at _index
+  * @param _binValue uint256 containing the balances of TYPES_PER_UINT256 types
+  * @param _index Index at which to retrieve value
+  * @param _amount Value to store at _index in _bin
+  * @return Value at given _index in _bin
+  */
+  function writeValueInBin(uint256 _binValue, uint256 _index, uint256 _amount) internal pure returns (uint256) {
+    require(_amount < 2**TYPES_BITS_SIZE, "Amount to write in bin is too large");
+
+    // Mask to retrieve data for a given binData
+    uint256 mask = (uint256(1) << TYPES_BITS_SIZE) - 1;
+
+    // Shift amount
+    uint256 leftShift = 256 - TYPES_BITS_SIZE * (_index + 1);
+    return (_binValue & ~(mask << leftShift) ) | (_amount << leftShift);
+  }
+
+}
+
+
+
+/**
+ * @title Ownable
+ * @dev The Ownable contract has an owner address, and provides basic authorization control
+ * functions, this simplifies the implementation of "user permissions".
+ */
+contract Ownable {
+  address public owner;
+
+
+  event OwnershipRenounced(address indexed previousOwner);
+  event OwnershipTransferred(
+    address indexed previousOwner,
+    address indexed newOwner
+  );
+
+
+  /**
+   * @dev The Ownable constructor sets the original `owner` of the contract to the sender
+   * account.
+   */
+  constructor() public {
+    owner = msg.sender;
+  }
+
+  /**
+   * @dev Throws if called by any account other than the owner.
+   */
+  modifier onlyOwner() {
+    require(msg.sender == owner);
+    _;
+  }
+
+  /**
+   * @dev Allows the current owner to relinquish control of the contract.
+   * @notice Renouncing to ownership will leave the contract without an owner.
+   * It will not be possible to call the functions with the `onlyOwner`
+   * modifier anymore.
+   */
+  function renounceOwnership() public onlyOwner {
+    emit OwnershipRenounced(owner);
+    owner = address(0);
+  }
+
+  /**
+   * @dev Allows the current owner to transfer control of the contract to a newOwner.
+   * @param _newOwner The address to transfer ownership to.
+   */
+  function transferOwnership(address _newOwner) public onlyOwner {
+    _transferOwnership(_newOwner);
+  }
+
+  /**
+   * @dev Transfers control of the contract to a newOwner.
+   * @param _newOwner The address to transfer ownership to.
+   */
+  function _transferOwnership(address _newOwner) internal {
+    require(_newOwner != address(0));
+    emit OwnershipTransferred(owner, _newOwner);
+    owner = _newOwner;
+  }
+}
+
+
+contract Badges is Ownable, ERC721XToken {
+
+  mapping(uint => int) internal tokenIdToIndividualSupply;
+  mapping(uint => bool) internal tokenIdIsTransferable;
+  string tokenBaseUri;
+
+  event TokenAwarded(uint indexed tokenId, address claimer, uint amount);
+  event TokenMinted(uint indexed tokenId, uint supply, uint tokenType, bool isTransferable);
+
+  modifier transferable (uint _tokenId) {
+    require(exists(_tokenId), "TokenID has not been minted");
+    require(tokenIdIsTransferable[_tokenId], "TokenID is not transferable");
+    _;
+  }
+
+  modifier transferableTokens (uint256[] _tokenIds) {
+    for(uint index = 0; index < _tokenIds.length; index++){
+      if(!exists(_tokenIds[index]) || !tokenIdIsTransferable[_tokenIds[index]]){
+        revert();
+        return;
+      }
+    }
+    _;
+  }
+
+  constructor(string _tokenBaseUri) public Ownable() {
+    tokenBaseUri = _tokenBaseUri;
+  }
+
+  function name() external view returns (string) {
+    return "Pillar Badges";
+  }
+
+  function symbol() external view returns (string) {
+    return "PBG";
+  }
+
+  function individualSupply(uint _tokenId) public view returns (int) {
+    return tokenIdToIndividualSupply[_tokenId];
+  }
+
+  function batchMintTokens(uint[] _tokenIds, uint[] _tokenSupplies, bool[] _isTransferable) external onlyOwner {
+    for (uint i = 0; i < _tokenIds.length; i++) {
+      mintToken(_tokenIds[i], _tokenSupplies[i], _isTransferable[i]);
+    }
+  }
+
+  function batchMintNftTokens(uint[] _tokenIds, bool[] _isTransferable) external onlyOwner {
+    for (uint i = 0; i < _tokenIds.length; i++) {
+      mintNftToken(_tokenIds[i], _isTransferable[i]);
+    }
+  }
+
+  // fungible mint
+  function mintToken(uint256 _tokenId, uint256 _supply, bool _isTransferable) public onlyOwner {
+    require(!exists(_tokenId), "Error: Tried to mint duplicate token id");
+    _mint(_tokenId, msg.sender, _supply);
+    tokenIdToIndividualSupply[_tokenId] = int(_supply);
+    tokenIdIsTransferable[_tokenId] = _isTransferable;
+    emit TokenMinted(_tokenId, _supply, FT, _isTransferable);
+  }
+
+  // nft mint
+  function mintNftToken(uint256 _tokenId, bool _isTransferable) public onlyOwner {
+    require(!exists(_tokenId), "Error: Tried to mint duplicate token id");
+    _mint(_tokenId, msg.sender);
+    tokenIdToIndividualSupply[_tokenId] = -1;
+    tokenIdIsTransferable[_tokenId] = _isTransferable;
+    emit TokenMinted(_tokenId, 1, NFT, _isTransferable);
+  }
+
+  function batchAwardToken(uint _tokenId, address[] _to, uint _amount) public onlyOwner {
+    for (uint i = 0; i < _to.length; i++) {
+      awardToken(_tokenId, _to[i], _amount);
+    }
+  }
+
+  function awardToken(uint _tokenId, address _to, uint _amount) public onlyOwner {
+    require(exists(_tokenId), "TokenID has not been minted");
+    if (tokenType[_tokenId] == NFT) {
+      _transferFrom(msg.sender, _to, _tokenId);
+    } else {
+      if (individualSupply(_tokenId) > 0) {
+        require(_amount <= balanceOf(msg.sender, _tokenId), "Quantity greater than from balance");
+        _updateTokenBalance(msg.sender, _tokenId, _amount, ObjectLib.Operations.SUB);
+      }
+      _updateTokenBalance(_to, _tokenId, _amount, ObjectLib.Operations.ADD);
+    }
+    emit TokenAwarded(_tokenId, _to, _amount);
+  }
+
+  /**
+   * @dev Gets Iterate through the list of existing tokens and return the indexes
+   *        and balances of the tokens owner by the user
+   * @return indexes The tokenIds
+   * @return balances The balances of each token
+   */
+  function tokensMinted() public view returns (uint256[] indexes, int256[] balances) {
+    uint256 numTokens = totalSupply();
+    uint256[] memory tokenIndexes = new uint256[](numTokens);
+    int256[] memory tokenBalances = new int256[](numTokens);
+
+    for (uint256 i = 0; i < numTokens; i++) {
+      uint256 tokenId = allTokens[i];
+      tokenIndexes[i] = tokenId;
+      tokenBalances[i] = individualSupply(tokenId);
+    }
+
+    return (tokenIndexes, tokenBalances);
+  }
+
+  function setTokenBaseUri(string _newUri) public onlyOwner {
+    tokenBaseUri = _newUri;
+  }
+
+  function getTokenBaseUri() public view returns (string) {
+    return tokenBaseUri;
+  }
+
+  /**
+   * @dev Returns the specified token's uri
+   * @param _tokenId uint256 ID of the token to get the uri of
+   * @return tokenUri token's uri
+   */
+  function tokenURI(uint256 _tokenId) public view returns (string) {
+    require(exists(_tokenId), "Token doesn't exist");
+    return _appendUintToString(tokenBaseUri, _tokenId);
+  }
+
+  function _appendUintToString(string _string, uint _number) internal pure returns (string) {
+    uint maxLength = 78;
+    bytes memory reversedNumber = new bytes(maxLength);
+    uint numDigits = 0;
+    while (_number != 0) {
+      uint remainder = _number % 10;
+      _number = _number / 10;
+      reversedNumber[numDigits++] = byte(48 + remainder);
+    }
+    bytes memory strBytes = bytes(_string);
+    bytes memory result = new bytes(strBytes.length + numDigits);
+    uint i;
+    for (i = 0; i < strBytes.length; i++) {
+      result[i] = strBytes[i];
+    }
+    for (i = 0; i < numDigits; i++) {
+      result[i + strBytes.length] = reversedNumber[numDigits - 1 - i];
+    }
+    return string(result);
+  }
+
+  /**
+   * @dev Returns whether the specified token is fungible
+   * @param _tokenId uint256 ID of the token to check the type of
+   * @return whether the token is fungible
+   */
+  function isFT(uint256 _tokenId) public view returns (bool) {
+    return tokenType[_tokenId] == FT;
+  }
+
+  /**
+   * @dev Returns whether the specified token is non-fungible
+   * @param _tokenId uint256 ID of the token to check the type of
+   * @return whether the token is non-fungible
+   */
+  function isNFT(uint256 _tokenId) public view returns (bool) {
+    return tokenType[_tokenId] == NFT;
+  }
+
+  /**
+   * @dev Returns whether the specified token is transferable
+   * @param _tokenId uint256 ID of the token to check the transfer status of
+   * @return whether the token is transferable
+   */
+  function isTransferable(uint256 _tokenId) public view returns (bool) {
+    return tokenIdIsTransferable[_tokenId];
+  }
+
+  // override transfer methods to check if the token is transferable
+  function batchTransferFrom(
+      address _from,
+      address _to,
+      uint256[] _tokenIds,
+      uint256[] _amounts
+    )
+    public
+    transferableTokens(_tokenIds)
+  {
+    super.batchTransferFrom(_from, _to, _tokenIds, _amounts);
+  }
+
+  function safeBatchTransferFrom(
+      address _from,
+      address _to,
+      uint256[] _tokenIds,
+      uint256[] _amounts,
+      bytes _data
+    )
+    public
+    transferableTokens(_tokenIds)
+  {
+    super.safeBatchTransferFrom(_from, _to, _tokenIds, _amounts, _data);
+  }
+
+  function transfer(address _to, uint256 _tokenId, uint256 _amount) public transferable(_tokenId) {
+    super.transfer(_to, _tokenId, _amount);
+  }
+
+  function transferFrom(address _from, address _to, uint256 _tokenId) public transferable(_tokenId) {
+    super.transferFrom(_from, _to, _tokenId);
+  }
+
+  function transferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount) public transferable(_tokenId) {
+    super.transferFrom(_from, _to, _tokenId, _amount);
+  }
+
+  function safeTransferFrom(address _from, address _to, uint256 _tokenId) public transferable(_tokenId) {
+    super.safeTransferFrom(_from, _to, _tokenId);
+  }
+
+  function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes _data) public transferable(_tokenId) {
+    super.safeTransferFrom(_from, _to, _tokenId, _data);
+  }
+
+  function safeTransferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount) public transferable(_tokenId) {
+    super.safeTransferFrom(_from, _to, _tokenId, _amount);
+  }
+
+  function safeTransferFrom(address _from, address _to, uint256 _tokenId, uint256 _amount, bytes _data) public transferable(_tokenId) {
+    super.safeTransferFrom(_from, _to, _tokenId, _amount, _data);
+  }
+}
+
+
+
+
+
+
+
+
+
