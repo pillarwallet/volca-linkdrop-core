@@ -58,6 +58,7 @@ const _sendContractDeploymentTx = ({
  * @param  {Number}  [claimAmountEth] - Amount of wei to distribute on claim
  * @param  {Number}  [decimals] - Token decimals
  * @param  {Number}  [linksNumber] - amount of links
+ * @param  {String}  [badgeAddress] - Address of the Pillar Badges contract
  * @param  {Object}  [web3] - web3 object (from web3.js lib)
  * @param  {Function}  [onTxMined] - Callback to fire after transaction is mined
  * @return {Object}
@@ -69,6 +70,7 @@ export const deployContract = async ({
     decimals,
     claimAmountEth,
     linksNumber,
+    badgeAddress,
     web3,
     onTxMined
 }) => {
@@ -91,9 +93,10 @@ export const deployContract = async ({
     const airdropParams = {
         tokenAddress,
         claimAmountAtomic,
-	referralAmountAtomic,
+	    referralAmountAtomic,
         claimAmountEthInWei,
-        airdropTransitAddress
+        airdropTransitAddress,
+        badgeAddress
     };
     
     // tx params

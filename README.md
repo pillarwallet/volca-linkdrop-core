@@ -66,7 +66,10 @@ const _deployAirdrop = async  () => {
         tokenAddress,
         decimals, // token decimals                                                                                                                                                  
         claimAmountEth, // claim amount of ETH (e.g. 0.001)                                                                                                                          
-        linksNumber, // number of links to generate                                                                                                                                  
+        linksNumber, // number of links to generate           
+        
+        badgesAddress, //Contract address of the Pillar Badges contract
+        
         web3, // web3 object                                                                                                                                                         
         onTxMined: (airdropContractAddress) => {
             // callback to update airdropContractAddress, when mined                                                                                                                 
