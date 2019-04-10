@@ -3,6 +3,7 @@ pragma solidity ^0.4.24;
 import "erc721x/contracts/Core/ERC721X/ERC721XToken.sol";
 import "erc721x/contracts/Libraries/ObjectsLib.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "./badges/Badges.sol";
 
 contract Badges is Ownable, ERC721XToken {
 
