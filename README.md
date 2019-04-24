@@ -5,7 +5,7 @@ Used at Volca-Airdrop-App - https://github.com/VolcaTech/volca-airdrop-app
 
 ## Installation
 ```bash
-npm i --save https://github.com/VolcaTech/volca-linkdrop-core
+npm i --save https://github.com/pillarwallet/volca-linkdrop-core
 ```
 ## Usage
 
