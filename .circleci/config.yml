@@ -23,7 +23,7 @@ jobs:
             - ./node_modules
       - run:
           name: build the 'dist' folder
-          command: npm run build-production
+          command: npm run build
       - run: ls -al
       - persist_to_workspace:
           root: dist
