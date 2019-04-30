@@ -44,10 +44,7 @@ jobs:
           command: npm install
       - run:
           name: unit-test
-          command:  npm run test:coverage
-      - run:
-          name: plato
-          command:  npm run plato
+          command:  npm run test
       - store_artifacts:
           path: ./reports/
           destination: reports
