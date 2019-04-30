@@ -23,39 +23,7 @@ jobs:
             - ./node_modules
       - run:
           name: build the 'dist' folder
-          command: npm run build-production
-      - run: ls -al
-      - persist_to_workspace:
-          root: dist
-          paths:
-            - index.js
-
-  test:
-    working_directory: ~/volca-linkdrop-core
-    docker:
-      - image: circleci/node:8.15.1
-    steps:
-      - checkout
-      - run:
-            name: Authenticate with registry
-            command: curl -u $ARTIFACTORY_PUBLISHING_USER:$ARTIFACTORY_PUBLISHING_PASSWORD https://pillarproject.jfrog.io/pillarproject/api/npm/auth >> ~/volca-linkdrop-core/.npmrc
-      - run:
-            name: set Registry
-            command: npm config set registry https://pillarproject.jfrog.io/pillarproject/api/npm/npm/
-      - restore_cache:
-          key: dependency-cache-{{ checksum "package.json" }}
-      - run:
-          name: Install
-          command: npm install
-      - run:
-          name: unit-test
-          command:  npm run test:coverage
-      - run:
-          name: plato
-          command:  npm run plato
-      - store_artifacts:
-          path: ./reports/
-          destination: reports
+          command: npm run build
 
   whitesource:
     working_directory: ~/volca-linkdrop-core
@@ -106,15 +74,10 @@ workflows:
   build_test_and_deploy:
     jobs:
       - build
-      - test:
-          requires:
-            - build
-      - whitesource:
-          requires:
-            - test
+      - whitesource
       - publish:
           requires:
-            - test
+            - build
           filters:
             branches:
               only:
