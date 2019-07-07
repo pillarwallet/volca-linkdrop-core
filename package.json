@@ -1,6 +1,6 @@
 {
   "name": "volca-core",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Core Javascript Volca library",
   "main": "lib/volca-core.js",
   "scripts": {
